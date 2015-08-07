@@ -2,10 +2,13 @@ package org.xteam.activity
 
 trait TreeEdge
 
-trait GraphEdge
+trait GraphEdge {
+  val from : Node
+  val to : Node
+}
 
-trait DirectedEdge extends GraphEdge
-trait UndirectedEdge extends GraphEdge
+case class DirectedEdge(override val from: Node, override val to: Node) extends GraphEdge
+case class UndirectedEdge(override val from: Node, override val to: Node) extends GraphEdge
 
 trait Node {
   var row : Int = 0
@@ -29,3 +32,5 @@ case class Graph(nodes: Seq[Node], edges: Seq[GraphEdge])
 case class Tree(nodes: Seq[Node], edges: Seq[TreeEdge])
 
 case class CompoundGraph(graph: Graph, tree: Tree)
+
+case class Partition(elements: Seq[Node])
