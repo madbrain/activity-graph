@@ -10,27 +10,40 @@ trait GraphEdge {
 case class DirectedEdge(override val from: Node, override val to: Node) extends GraphEdge
 case class UndirectedEdge(override val from: Node, override val to: Node) extends GraphEdge
 
-trait Node {
-  var row : Int = 0
-  var column : Int = 0
-}
+trait Node
 trait BaseNode extends Node
 
-case class ClusterNode()
+class ClusterNode(elements: Seq[Node])
 
-case class InitialNode() extends BaseNode
-case class FinalNode() extends BaseNode
-case class ExpansionNode() extends BaseNode // TODO est ce que c'est une ClusterNode ?
-case class ObjectNode(name: String) extends BaseNode
-case class ActivityNode(name: String) extends BaseNode
-case class ForkJoinNode() extends BaseNode
-case class DecisionMergeNode() extends BaseNode
-case class NoteNode() extends BaseNode
+class InitialNode() extends BaseNode
+class FinalNode() extends BaseNode
+class ExpansionNode() extends BaseNode // TODO est ce que c'est un ClusterNode ?
+class ObjectNode(val name: String) extends BaseNode
+class ActivityNode(val name: String) extends BaseNode
+class ForkNode() extends BaseNode
+class JoinNode() extends BaseNode
+class DecisionNode() extends BaseNode
+class MergeNode() extends BaseNode
+class NoteNode(val content: String) extends BaseNode
 
-case class Graph(nodes: Seq[Node], edges: Seq[GraphEdge])
+case class Graph(nodes: Seq[Node], edges: Seq[GraphEdge]) {
+  lazy val outgoings = nodes.map(node => node -> edges.filter(edge => edge.from == node)).toMap
+  lazy val incomings = nodes.map(node => node -> edges.filter(edge => edge.to == node)).toMap
+  lazy val directedEdges = edges.filter(edge => edge.isInstanceOf[DirectedEdge])
+  lazy val undirectedEdges = edges.filter(edge => edge.isInstanceOf[UndirectedEdge])
+}
 
 case class Tree(nodes: Seq[Node], edges: Seq[TreeEdge])
 
 case class CompoundGraph(graph: Graph, tree: Tree)
 
-case class Partition(elements: Seq[Node])
+case class Partition(nodes: Seq[Node])
+
+case class Partitions(partitions: Seq[Seq[Partition]]) {
+  val rows: Int = partitions.size
+
+}
+
+case class PartitionNode(i: Int) extends Node
+
+case class ActivityGraph(graph: Graph, partitions: Partitions)
