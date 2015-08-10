@@ -1,12 +1,28 @@
 package org.xteam.activity
 
+import org.xteam.activity
+
 object Launcher {
   def main (args: Array[String]) {
 
-    val activityGraph = buildExample
+    val activityGraph = buildExample2
 
     // => preprocess
+
     // replace each cluster c by two nodes c_top et c_bottom
+    val clusterNodes = activityGraph.graph.nodes.filter(node => node.isInstanceOf[ClusterNode])
+    val bottomEdges = activityGraph.graph.outgoings(clusterNode).map(edge => new DirectedEdge(topNode, edge.to))
+    if (clusterNodes.nonEmpty) {
+      clusterNodes.asInstanceOf[Seq[ClusterNode]].foreach(clusterNode => {
+        val topNode = new TopClusterNode(clusterNode)
+        val bottomNode = new BottomClusterNode(clusterNode)
+        val topEdges = activityGraph.graph.incomings(clusterNode).map(edge => new DirectedEdge(edge.from, topNode))
+        throw new RuntimeException("accumulate nodes")
+      })
+      throw new RuntimeException("replace cluster nodes")
+      // activityGraph.graph.nodes = activityGraph.graph.nodes - clusterNodes + topNodes + bottomNodes
+      // activityGraph.graph.edges = activityGraph.graph.edges - clusterEdges + topEdges + bottomEdges
+    }
 
     // => planarization
 
@@ -121,6 +137,56 @@ object Launcher {
       List(
         Partition(List(shipOrder, join, merge, closeOrder, finalNode)),
         Partition(List(makePayment)))))
+
+    ActivityGraph(Graph(nodes, edges), partitions)
+  }
+
+  def buildExample2: ActivityGraph = {
+    val initialNode = new InitialNode()
+    val receiveOrder = new ActivityNode("Receive Order")
+    val rejectedOrAccepted = new DecisionNode()
+    val fillOrder = new ActivityNode("Fill Order")
+    val fork = new ForkNode()
+    val sendInvoice = new ActivityNode("Send Invoice")
+    val invoice = new ObjectNode("Invoice")
+    val makePayment = new ActivityNode("Make Payment")
+    val shipOrder = new ActivityNode("shipOrder")
+    val join = new JoinNode()
+    val merge = new MergeNode()
+    val closeOrder = new ActivityNode("Close Order")
+    val finalNode = new FinalNode()
+    val orderCancelRequest = new ActivityNode("Order Cancel Request")
+    val cancelRequest = new ActivityNode("Cancel Request")
+    val clusterNode = new ClusterNode(Seq(receiveOrder, rejectedOrAccepted, fillOrder, fork, shipOrder, orderCancelRequest))
+
+    val nodes = List(initialNode, receiveOrder, rejectedOrAccepted, fillOrder,
+      fork, sendInvoice, invoice, makePayment, shipOrder, join, merge, closeOrder, finalNode, orderCancelRequest,
+      cancelRequest, clusterNode)
+
+    val directedEdges = List(
+      DirectedEdge(initialNode, receiveOrder),
+      DirectedEdge(receiveOrder, rejectedOrAccepted),
+      DirectedEdge(rejectedOrAccepted, fillOrder),
+      DirectedEdge(rejectedOrAccepted, merge),
+      DirectedEdge(fillOrder, fork),
+      DirectedEdge(fork, sendInvoice),
+      DirectedEdge(fork, shipOrder),
+      DirectedEdge(sendInvoice, invoice),
+      DirectedEdge(invoice, makePayment),
+      DirectedEdge(shipOrder, join),
+      DirectedEdge(makePayment, join),
+      DirectedEdge(join, merge),
+      DirectedEdge(merge, closeOrder),
+      DirectedEdge(closeOrder, finalNode),
+      DirectedEdge(orderCancelRequest, cancelRequest),
+      DirectedEdge(cancelRequest, finalNode)
+    )
+    val undirectedEdges = List[GraphEdge]()
+    val edges = directedEdges ++ undirectedEdges
+
+    val partitions = Partitions(List(
+      List(
+        Partition(nodes))))
 
     ActivityGraph(Graph(nodes, edges), partitions)
   }

@@ -13,7 +13,9 @@ case class UndirectedEdge(override val from: Node, override val to: Node) extend
 trait Node
 trait BaseNode extends Node
 
-class ClusterNode(elements: Seq[Node])
+class ClusterNode(elements: Seq[Node]) extends Node
+class TopClusterNode(clusterNode: ClusterNode) extends Node
+class BottomClusterNode(clusterNode: ClusterNode) extends Node
 
 class InitialNode() extends BaseNode
 class FinalNode() extends BaseNode
