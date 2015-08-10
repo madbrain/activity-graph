@@ -1,47 +1,33 @@
 package org.xteam.activity
 
+import java.io.{PrintWriter, File}
+
 import org.xteam.activity
 
 object Launcher {
   def main (args: Array[String]) {
 
-    val activityGraph = buildExample2
+    val activityGraph = preprocessClusters(buildExample2)
 
     // => preprocess
-
-    // replace each cluster c by two nodes c_top et c_bottom
-    val clusterNodes = activityGraph.graph.nodes.filter(node => node.isInstanceOf[ClusterNode])
-    val bottomEdges = activityGraph.graph.outgoings(clusterNode).map(edge => new DirectedEdge(topNode, edge.to))
-    if (clusterNodes.nonEmpty) {
-      clusterNodes.asInstanceOf[Seq[ClusterNode]].foreach(clusterNode => {
-        val topNode = new TopClusterNode(clusterNode)
-        val bottomNode = new BottomClusterNode(clusterNode)
-        val topEdges = activityGraph.graph.incomings(clusterNode).map(edge => new DirectedEdge(edge.from, topNode))
-        throw new RuntimeException("accumulate nodes")
-      })
-      throw new RuntimeException("replace cluster nodes")
-      // activityGraph.graph.nodes = activityGraph.graph.nodes - clusterNodes + topNodes + bottomNodes
-      // activityGraph.graph.edges = activityGraph.graph.edges - clusterEdges + topEdges + bottomEdges
-    }
 
     // => planarization
 
     // construct nesting graph
-
-    // for each cluster c connect
-    //  for each base child v of c in tree hierarchy
-    //    add c_top -> v
-    //    add v -> c_bottom
-    //  for each cluster child d of c in tree hierarchy
-    //    add c_top -> d_top
-    //    add d_bottom -> c_bottom
-
     val partitionNodes = 0.to(activityGraph.partitions.rows).map(i => PartitionNode(i))
     val layerEdges = 0.until(activityGraph.partitions.rows).map(i => DirectedEdge(partitionNodes(i), partitionNodes(i+1)))
-    val nodeEdges = activityGraph.partitions.partitions.zipWithIndex.flatMap({ case (row, i) =>
+    val partitionsNodeEdges = activityGraph.partitions.partitions.zipWithIndex.flatMap({ case (row, i) =>
       row.flatMap(partition =>
         partition.nodes.flatMap(node =>
           Seq(DirectedEdge(partitionNodes(i), node), DirectedEdge(node, partitionNodes(i+1))))) })
+
+    // TODO: handle nested cluster
+    val clusterNodeEdges = activityGraph.graph.nodes.filter(node => node.isInstanceOf[TopClusterNode]).flatMap(node =>
+      node.asInstanceOf[TopClusterNode].clusterNode.elements.map(n => DirectedEdge(n, node))) ++
+      activityGraph.graph.nodes.filter(node => node.isInstanceOf[BottomClusterNode]).flatMap(node =>
+        node.asInstanceOf[BottomClusterNode].clusterNode.elements.map(n => DirectedEdge(node, n)))
+    val nodeEdges = partitionsNodeEdges ++ clusterNodeEdges
+
 
     val vpn = partitionNodes ++ activityGraph.graph.nodes
     val epn = layerEdges ++ nodeEdges
@@ -74,6 +60,8 @@ object Launcher {
     val order = new TopologicalSorter().sort(Graph(vpn, newEdges))
     println(order)
 
+    outputToDot("out.dot", Graph(vpn, newEdges))
+
     // remove nesting graph edges
 
     // insert dummy border node => partition and cluster
@@ -91,6 +79,58 @@ object Launcher {
     // make edge shapes
 
     // ...
+  }
+
+  def preprocessClusters(activityGraph: ActivityGraph): ActivityGraph = {
+    val clusterNodes = activityGraph.graph.nodes.filter(node => node.isInstanceOf[ClusterNode])
+    if (clusterNodes.nonEmpty) {
+      case class TopBottomAssociation(clusterNode: Node, topNode: TopClusterNode, bottomNode: BottomClusterNode,
+                                      incomings: Seq[GraphEdge], outgoings: Seq[GraphEdge])
+      val topBottomTuples = clusterNodes.asInstanceOf[Seq[ClusterNode]].map(clusterNode => {
+        TopBottomAssociation(clusterNode,
+          new TopClusterNode(clusterNode), new BottomClusterNode(clusterNode),
+          activityGraph.graph.incomings(clusterNode),
+          activityGraph.graph.outgoings(clusterNode)
+        )
+      })
+      val newNodes = topBottomTuples.flatMap(asso => Seq(asso.topNode, asso.bottomNode))
+      val clusterEdges = topBottomTuples.flatMap(asso => asso.incomings ++ asso.outgoings)
+      val newEdges = topBottomTuples.flatMap(asso =>
+        asso.incomings.map(edge => new DirectedEdge(edge.from, asso.topNode)) ++
+          asso.outgoings.map(edge => new DirectedEdge(asso.topNode, edge.to))
+      )
+      val newGraph = Graph(activityGraph.graph.nodes.filterNot(clusterNodes.contains) ++ newNodes,
+        activityGraph.graph.edges.filterNot(clusterEdges.contains) ++ newEdges)
+      val topBottomByNode = topBottomTuples.map(asso => asso.clusterNode -> Seq(asso.topNode, asso.bottomNode)).toMap
+      val newPartitions = Partitions(activityGraph.partitions.partitions.map(row =>
+        row.map(partition => Partition(partition.nodes.flatMap(node =>
+          if(clusterNodes.contains(node)) topBottomByNode(node) else Seq(node))))))
+      ActivityGraph(newGraph, newPartitions)
+    } else {
+      activityGraph
+    }
+  }
+
+  def outputToDot(fileName: String, graph: Graph): Unit = {
+    val nodeIndex = graph.nodes.zip(1.to(graph.nodes.size)).toMap
+    val writer = new PrintWriter(new File(fileName))
+    writer.println("digraph G {")
+    graph.nodes.foreach(node => {
+      val color = node match {
+        case PartitionNode(_) => "blue"
+        case x : TopClusterNode => "red"
+        case x : BottomClusterNode => "red"
+        case _ => "black"
+      }
+      writer.println("n_" + nodeIndex(node) + s"""[shape=box,color=\"${color}\"];""")
+    })
+    graph.nodes.foreach(node => {
+      graph.outgoings(node).foreach(edge => {
+        writer.println("n_" + nodeIndex(node) + " -> n_" + nodeIndex(edge.to) + ";")
+      })
+    })
+    writer.println("}")
+    writer.close()
   }
 
   def buildExample: ActivityGraph = {

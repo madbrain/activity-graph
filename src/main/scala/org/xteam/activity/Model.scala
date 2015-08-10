@@ -13,9 +13,9 @@ case class UndirectedEdge(override val from: Node, override val to: Node) extend
 trait Node
 trait BaseNode extends Node
 
-class ClusterNode(elements: Seq[Node]) extends Node
-class TopClusterNode(clusterNode: ClusterNode) extends Node
-class BottomClusterNode(clusterNode: ClusterNode) extends Node
+class ClusterNode(val elements: Seq[Node]) extends Node
+class TopClusterNode(val clusterNode: ClusterNode) extends Node
+class BottomClusterNode(val clusterNode: ClusterNode) extends Node
 
 class InitialNode() extends BaseNode
 class FinalNode() extends BaseNode
@@ -43,7 +43,6 @@ case class Partition(nodes: Seq[Node])
 
 case class Partitions(partitions: Seq[Seq[Partition]]) {
   val rows: Int = partitions.size
-
 }
 
 case class PartitionNode(i: Int) extends Node
