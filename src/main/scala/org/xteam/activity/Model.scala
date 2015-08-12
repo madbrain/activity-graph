@@ -21,7 +21,9 @@ class InitialNode() extends BaseNode
 class FinalNode() extends BaseNode
 class ExpansionNode() extends BaseNode // TODO est ce que c'est un ClusterNode ?
 class ObjectNode(val name: String) extends BaseNode
-class ActivityNode(val name: String) extends BaseNode
+class ActivityNode(val name: String) extends BaseNode {
+  override def toString = s"ActivityNode(${name})"
+}
 class ForkNode() extends BaseNode
 class JoinNode() extends BaseNode
 class DecisionNode() extends BaseNode

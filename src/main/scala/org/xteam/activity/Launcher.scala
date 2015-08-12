@@ -9,8 +9,6 @@ object Launcher {
 
     val activityGraph = preprocessClusters(buildExample2)
 
-    // => preprocess
-
     // => planarization
 
     // construct nesting graph
@@ -23,9 +21,9 @@ object Launcher {
 
     // TODO: handle nested cluster
     val clusterNodeEdges = activityGraph.graph.nodes.filter(node => node.isInstanceOf[TopClusterNode]).flatMap(node =>
-      node.asInstanceOf[TopClusterNode].clusterNode.elements.map(n => DirectedEdge(n, node))) ++
+      node.asInstanceOf[TopClusterNode].clusterNode.elements.map(n => DirectedEdge(node, n))) ++
       activityGraph.graph.nodes.filter(node => node.isInstanceOf[BottomClusterNode]).flatMap(node =>
-        node.asInstanceOf[BottomClusterNode].clusterNode.elements.map(n => DirectedEdge(node, n)))
+        node.asInstanceOf[BottomClusterNode].clusterNode.elements.map(n => DirectedEdge(n, node)))
     val nodeEdges = partitionsNodeEdges ++ clusterNodeEdges
 
 
@@ -58,11 +56,15 @@ object Launcher {
 
     // do layering => topological sort
     val order = new TopologicalSorter().sort(Graph(vpn, newEdges))
-    println(order)
+    val maxRows = order.values.max
+    val nodePerRanks = 0.to(maxRows).map(i => order.filter({ case (node, rank) => rank == i}).keys.toList)
+    nodePerRanks.foreach(rank => println(rank))
 
     outputToDot("out.dot", Graph(vpn, newEdges))
 
     // remove nesting graph edges
+
+    // insert dummy nodes for long edges
 
     // insert dummy border node => partition and cluster
 
@@ -97,7 +99,7 @@ object Launcher {
       val clusterEdges = topBottomTuples.flatMap(asso => asso.incomings ++ asso.outgoings)
       val newEdges = topBottomTuples.flatMap(asso =>
         asso.incomings.map(edge => new DirectedEdge(edge.from, asso.topNode)) ++
-          asso.outgoings.map(edge => new DirectedEdge(asso.topNode, edge.to))
+          asso.outgoings.map(edge => new DirectedEdge(asso.bottomNode, edge.to))
       )
       val newGraph = Graph(activityGraph.graph.nodes.filterNot(clusterNodes.contains) ++ newNodes,
         activityGraph.graph.edges.filterNot(clusterEdges.contains) ++ newEdges)
