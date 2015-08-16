@@ -5,9 +5,20 @@ import java.io.{PrintWriter, File}
 import org.xteam.activity
 
 object Launcher {
-  def main (args: Array[String]) {
 
-    val activityGraph = preprocessClusters(buildExample2)
+  def main (args: Array[String]): Unit = {
+
+    // layoutActivity(ActivityExamples.buildExample3)
+
+    val graph = ClusteredExamples.example1
+    // TODO: should verify that graph clusters are non empty
+    // println("==============================")
+    graph.hierarchyTree.foreach({ case (i, tree) => println(s"$i => $tree") })
+  }
+  
+  def layoutActivity(inputGraph: ActivityGraph) = {
+
+    val activityGraph = preprocessClusters(inputGraph)
 
     // => planarization
 
@@ -30,7 +41,7 @@ object Launcher {
     val vpn = partitionNodes ++ activityGraph.graph.nodes
     val epn = layerEdges ++ nodeEdges
 
-    def edgeWeight(edge: GraphEdge) = edge.from match {
+    def edgeWeight(edge: Edge) = edge.from match {
       case _ : DecisionNode => 1
       case _ if epn.contains(edge) => 5 * activityGraph.graph.edges.size + 1
       case _ => 5
@@ -54,17 +65,13 @@ object Launcher {
     //    - feedbackArc + activityGraph.graph.undirectedEdges + newFeedback
     val newEdges = graph.edges
 
-    // do layering => topological sort
-    val order = new TopologicalSorter().sort(Graph(vpn, newEdges))
-    val maxRows = order.values.max
-    val nodePerRanks = 0.to(maxRows).map(i => order.filter({ case (node, rank) => rank == i}).keys.toList)
+    val layeredGraph = doLayerAssignment(Graph(vpn, newEdges), epn)
+
+    val maxRows = layeredGraph.layer.values.max
+    val nodePerRanks = 0.to(maxRows).map(i => layeredGraph.nodes.filter(node => layeredGraph.layer(node) == i))
     nodePerRanks.foreach(rank => println(rank))
 
-    outputToDot("out.dot", Graph(vpn, newEdges))
-
-    // remove nesting graph edges
-
-    // insert dummy nodes for long edges
+    outputToDot("out.dot", layeredGraph)
 
     // insert dummy border node => partition and cluster
 
@@ -87,7 +94,7 @@ object Launcher {
     val clusterNodes = activityGraph.graph.nodes.filter(node => node.isInstanceOf[ClusterNode])
     if (clusterNodes.nonEmpty) {
       case class TopBottomAssociation(clusterNode: Node, topNode: TopClusterNode, bottomNode: BottomClusterNode,
-                                      incomings: Seq[GraphEdge], outgoings: Seq[GraphEdge])
+                                      incomings: Seq[Edge], outgoings: Seq[Edge])
       val topBottomTuples = clusterNodes.asInstanceOf[Seq[ClusterNode]].map(clusterNode => {
         TopBottomAssociation(clusterNode,
           new TopClusterNode(clusterNode), new BottomClusterNode(clusterNode),
@@ -113,7 +120,33 @@ object Launcher {
     }
   }
 
-  def outputToDot(fileName: String, graph: Graph): Unit = {
+  class DummyNode extends Node
+
+  def doLayerAssignment(graph: Graph, epn: Seq[Edge]) = {
+    val order = new TopologicalSorter().sort(graph)
+
+    // remove nesting graph edges
+    val realEdges = graph.edges.filterNot(epn.contains)
+
+    // insert dummy nodes for long edges
+    val longEdges = realEdges.filter(edge => (order(edge.to) - order(edge.from)) > 1)
+
+    val tuples = longEdges.map(edge => {
+      val dummyNodesToLayer = (order(edge.from)+1).to(order(edge.to)-1).map(l => new DummyNode() -> l)
+      val dummyNodes = dummyNodesToLayer.map({ case (node, l) => node })
+      val newEdges = (edge.from +: dummyNodes).zip(dummyNodes :+ edge.to)
+        .map({ case (from, node) => DirectedEdge(from, node) })
+      (dummyNodesToLayer, newEdges)
+    })
+    val newNodesToLayer = tuples.flatMap({ case (nodeToLayer, edges) => nodeToLayer }).toMap
+    val newEdges = tuples.flatMap({ case (nodeToLayer, edges) => edges })
+
+    LayeredGraph(graph.nodes ++ newNodesToLayer.keys,
+      realEdges.filterNot(longEdges.contains) ++ newEdges,
+      order ++ newNodesToLayer)
+  }
+
+  def outputToDot(fileName: String, graph: GraphLike): Unit = {
     val nodeIndex = graph.nodes.zip(1.to(graph.nodes.size)).toMap
     val writer = new PrintWriter(new File(fileName))
     writer.println("digraph G {")
@@ -122,9 +155,19 @@ object Launcher {
         case PartitionNode(_) => "blue"
         case x : TopClusterNode => "red"
         case x : BottomClusterNode => "red"
+        case x : ForkNode => "pink"
+        case x : JoinNode => "pink"
+        case x : DecisionNode => "green"
+        case x : MergeNode => "green"
+        case x : DummyNode => "grey"
         case _ => "black"
       }
-      writer.println("n_" + nodeIndex(node) + s"""[shape=box,color=\"${color}\"];""")
+      val label = node match {
+        case ActivityNode(name) => name
+        case ObjectNode(name) => name
+        case _ => s"N${nodeIndex(node)}"
+      }
+      writer.println("n_" + nodeIndex(node) + s"""[shape=box,color=\"$color\",label=\"$label\"];""")
     })
     graph.nodes.foreach(node => {
       graph.outgoings(node).foreach(edge => {
@@ -135,101 +178,5 @@ object Launcher {
     writer.close()
   }
 
-  def buildExample: ActivityGraph = {
-    val initialNode = new InitialNode()
-    val receiveOrder = new ActivityNode("Receive Order")
-    val rejectedOrAccepted = new DecisionNode()
-    val fillOrder = new ActivityNode("Fill Order")
-    val fork = new ForkNode()
-    val sendInvoice = new ActivityNode("Send Invoice")
-    val invoice = new ObjectNode("Invoice")
-    val makePayment = new ActivityNode("Make Payment")
-    val shipOrder = new ActivityNode("shipOrder")
-    val join = new JoinNode()
-    val merge = new MergeNode()
-    val closeOrder = new ActivityNode("Close Order")
-    val finalNode = new FinalNode()
 
-    val nodes = List(initialNode, receiveOrder, rejectedOrAccepted, fillOrder,
-      fork, sendInvoice, invoice, makePayment, shipOrder, join, merge, closeOrder, finalNode)
-
-    val directedEdges = List(
-      DirectedEdge(initialNode, receiveOrder),
-      DirectedEdge(receiveOrder, rejectedOrAccepted),
-      DirectedEdge(rejectedOrAccepted, fillOrder),
-      DirectedEdge(rejectedOrAccepted, merge),
-      DirectedEdge(fillOrder, fork),
-      DirectedEdge(fork, sendInvoice),
-      DirectedEdge(fork, shipOrder),
-      DirectedEdge(sendInvoice, invoice),
-      DirectedEdge(invoice, makePayment),
-      DirectedEdge(shipOrder, join),
-      DirectedEdge(makePayment, join),
-      DirectedEdge(join, merge),
-      DirectedEdge(merge, closeOrder),
-      DirectedEdge(closeOrder, finalNode)
-    )
-    val undirectedEdges = List[GraphEdge]()
-    val edges = directedEdges ++ undirectedEdges
-
-    val partitions = Partitions(List(
-      List(
-        Partition(List(initialNode, receiveOrder, rejectedOrAccepted, fillOrder, fork)),
-        Partition(List(sendInvoice, invoice))),
-      List(
-        Partition(List(shipOrder, join, merge, closeOrder, finalNode)),
-        Partition(List(makePayment)))))
-
-    ActivityGraph(Graph(nodes, edges), partitions)
-  }
-
-  def buildExample2: ActivityGraph = {
-    val initialNode = new InitialNode()
-    val receiveOrder = new ActivityNode("Receive Order")
-    val rejectedOrAccepted = new DecisionNode()
-    val fillOrder = new ActivityNode("Fill Order")
-    val fork = new ForkNode()
-    val sendInvoice = new ActivityNode("Send Invoice")
-    val invoice = new ObjectNode("Invoice")
-    val makePayment = new ActivityNode("Make Payment")
-    val shipOrder = new ActivityNode("shipOrder")
-    val join = new JoinNode()
-    val merge = new MergeNode()
-    val closeOrder = new ActivityNode("Close Order")
-    val finalNode = new FinalNode()
-    val orderCancelRequest = new ActivityNode("Order Cancel Request")
-    val cancelRequest = new ActivityNode("Cancel Request")
-    val clusterNode = new ClusterNode(Seq(receiveOrder, rejectedOrAccepted, fillOrder, fork, shipOrder, orderCancelRequest))
-
-    val nodes = List(initialNode, receiveOrder, rejectedOrAccepted, fillOrder,
-      fork, sendInvoice, invoice, makePayment, shipOrder, join, merge, closeOrder, finalNode, orderCancelRequest,
-      cancelRequest, clusterNode)
-
-    val directedEdges = List(
-      DirectedEdge(initialNode, receiveOrder),
-      DirectedEdge(receiveOrder, rejectedOrAccepted),
-      DirectedEdge(rejectedOrAccepted, fillOrder),
-      DirectedEdge(rejectedOrAccepted, merge),
-      DirectedEdge(fillOrder, fork),
-      DirectedEdge(fork, sendInvoice),
-      DirectedEdge(fork, shipOrder),
-      DirectedEdge(sendInvoice, invoice),
-      DirectedEdge(invoice, makePayment),
-      DirectedEdge(shipOrder, join),
-      DirectedEdge(makePayment, join),
-      DirectedEdge(join, merge),
-      DirectedEdge(merge, closeOrder),
-      DirectedEdge(closeOrder, finalNode),
-      DirectedEdge(orderCancelRequest, cancelRequest),
-      DirectedEdge(cancelRequest, finalNode)
-    )
-    val undirectedEdges = List[GraphEdge]()
-    val edges = directedEdges ++ undirectedEdges
-
-    val partitions = Partitions(List(
-      List(
-        Partition(nodes))))
-
-    ActivityGraph(Graph(nodes, edges), partitions)
-  }
 }

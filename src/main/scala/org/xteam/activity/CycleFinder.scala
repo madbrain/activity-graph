@@ -11,7 +11,7 @@ class CycleFinder {
     val Black = new Color
   }
 
-  def findCycle(graph: Graph): Option[Seq[GraphEdge]] = {
+  def findCycle(graph: Graph): Option[Seq[Edge]] = {
     val color = mutable.Map(graph.nodes.map(node => node -> Color.White): _*)
     graph.nodes.foreach(node => {
       if (color(node) == Color.White) {
@@ -25,7 +25,7 @@ class CycleFinder {
   }
 
   def visit(node: Node, graph: Graph,
-            color: mutable.Map[Node, Color], stack: Seq[GraphEdge]): Option[Seq[GraphEdge]] = {
+            color: mutable.Map[Node, Color], stack: Seq[Edge]): Option[Seq[Edge]] = {
     color(node) = Color.Grey
     graph.outgoings(node).foreach(edge => {
       val to = edge.to

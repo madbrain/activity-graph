@@ -4,9 +4,9 @@ import scala.collection.mutable
 
 class FeedbackArcSolver {
 
-  def solve(graph: Graph, edgeWeight: (GraphEdge) => Int): Seq[GraphEdge] = {
-    val F = new mutable.ArrayBuffer[GraphEdge]
-    val weights: mutable.Map[GraphEdge, Int] = mutable.Map(graph.edges.map(edge => edge -> edgeWeight(edge)): _*)
+  def solve(graph: Graph, edgeWeight: (Edge) => Int): Seq[Edge] = {
+    val F = new mutable.ArrayBuffer[Edge]
+    val weights: mutable.Map[Edge, Int] = mutable.Map(graph.edges.map(edge => edge -> edgeWeight(edge)): _*)
     Iterator.continually({
       new CycleFinder().findCycle(Graph(graph.nodes, graph.edges.filterNot(F.contains))) match {
         case Some(cycle) =>
