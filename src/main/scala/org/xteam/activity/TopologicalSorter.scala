@@ -25,7 +25,7 @@ class TopologicalSorter() {
         }
       })
     }
-    return layer.toMap
+    layer.toMap
   }
 
 }

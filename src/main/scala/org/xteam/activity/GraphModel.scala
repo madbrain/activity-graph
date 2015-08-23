@@ -11,6 +11,7 @@ class ClusterNode(val elements: Seq[Node]) extends Node
 
 case class DirectedEdge(override val from: Node, override val to: Node) extends Edge
 case class UndirectedEdge(override val from: Node, override val to: Node) extends Edge
+case class WeightedEdge(override val from: Node, override val to: Node, weight: Int) extends Edge
 
 trait GraphLike {
   val nodes: Seq[Node]
@@ -21,37 +22,52 @@ trait GraphLike {
   lazy val undirectedEdges = edges.filter(edge => edge.isInstanceOf[UndirectedEdge])
 }
 
-case class Tree(nodes: Seq[Node], edges: Seq[Edge])
+trait TreeNode extends Node {
+
+  def children: Seq[Node]
+
+  def copyWith(children: Seq[Node]): TreeNode
+
+  def leaves: Seq[Node] = children.flatMap({
+    case node: TreeNode => node.leaves
+    case node => Seq(node)
+  })
+
+  lazy val withChildren: Seq[Node] = this +: children.flatMap({
+    case node: TreeNode => node.withChildren
+    case node => Seq(node)
+  })
+
+  def filter(f: Node => Boolean): TreeNode = {
+    copyWith(children.filter(node => f(node)).map({
+      case node: TreeNode => node.filter(f)
+      case node => node
+    }))
+  }
+}
 
 case class Graph(nodes: Seq[Node], edges: Seq[Edge]) extends GraphLike
 
-case class CompoundGraph(nodes: Seq[Node], edges: Seq[Edge], hierarchyEdges: Seq[Edge]) extends GraphLike
+case class LayeredGraph(nodes: Seq[Node], edges: Seq[Edge],
+                                layer: Map[Node, Int]) extends GraphLike
 
-case class LayeredGraph(nodes: Seq[Node], edges: Seq[Edge], layer: Map[Node, Int]) extends GraphLike
+case class CompoundLayeredGraph(nodes: Seq[Node], edges: Seq[Edge], root: TreeNode,
+                                layer: Map[Node, Int]) extends GraphLike {
 
-case class LayeredCompoundGraph(nodes: Seq[Node], edges: Seq[Edge],
-                                hierarchyEdges: Seq[Edge], layer: Map[Node, Int]) extends GraphLike {
-
-  lazy val baseNodes = nodes.filter(node => hierarchyEdges.map(edge => edge.from != node).min)
+  lazy val baseNodes = nodes.filter({ case x: TreeNode => false case _ => true})
   lazy val clusterNodes = nodes.filterNot(baseNodes.contains)
 
-  private def computeLeafNodes(node: Node): Seq[Node] = {
-      if (baseNodes.contains(node)) {
-        Seq(node)
-      } else {
-        val children = hierarchyEdges.filter(edge => edge.from == node).map(edge => edge.to)
-        children.flatMap(node => computeLeafNodes(node))
-      }
-  }
-  
-  lazy val leafNodes = nodes.map(node => node -> computeLeafNodes(node)).toMap
-
-  lazy val lmin = nodes.map(node => node -> leafNodes(node).map(node => layer(node)).min).toMap
-  lazy val lmax = nodes.map(node => node -> leafNodes(node).map(node => layer(node)).max).toMap
+  lazy val lmin = nodes.map({
+    case node: TreeNode => node -> node.leaves.map(n => layer(n)).min
+    case node => node -> layer(node)
+  }).toMap
+  lazy val lmax = nodes.map({
+    case node: TreeNode => node -> node.leaves.map(n => layer(n)).max
+    case node => node -> layer(node)
+  }).toMap
 
   lazy val hierarchyTree = layer.values.toSet[Int].map(i => {
     val layerNodes = nodes.filter(node => lmin(node) <= i && i <= lmax(node))
-    i -> Tree(layerNodes, hierarchyEdges.filter(edge =>
-      layerNodes.contains(edge.from) || layerNodes.contains(edge.to)))
+    i -> root.filter(n => layerNodes.contains(n))
   }).toMap
 }

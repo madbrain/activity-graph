@@ -2,7 +2,7 @@ package org.xteam.activity
 
 import scala.collection.mutable
 
-class CycleFinder {
+object CycleFinder {
 
   sealed class Color
   object Color {
@@ -21,10 +21,10 @@ class CycleFinder {
         }
       }
     })
-    return None
+    None
   }
 
-  def visit(node: Node, graph: Graph,
+  private def visit(node: Node, graph: Graph,
             color: mutable.Map[Node, Color], stack: Seq[Edge]): Option[Seq[Edge]] = {
     color(node) = Color.Grey
     graph.outgoings(node).foreach(edge => {
@@ -41,6 +41,6 @@ class CycleFinder {
       }
     })
     color(node) = Color.Black
-    return None
+    None
   }
 }

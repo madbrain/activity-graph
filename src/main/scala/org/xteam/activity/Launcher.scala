@@ -4,6 +4,8 @@ import java.io.{PrintWriter, File}
 
 import org.xteam.activity
 
+import scala.collection.immutable.Iterable
+
 object Launcher {
 
   def main (args: Array[String]): Unit = {
@@ -11,11 +13,54 @@ object Launcher {
     // layoutActivity(ActivityExamples.buildExample3)
 
     val graph = ClusteredExamples.example1
+
     // TODO: should verify that graph clusters are non empty
-    // println("==============================")
-    graph.hierarchyTree.foreach({ case (i, tree) => println(s"$i => $tree") })
+
+    // TODO: implement ping pong
+    1.until(graph.hierarchyTree.keys.size).foreach(l2 => {
+      val B1 = graph.hierarchyTree(l2-1).leaves
+      val T2 = graph.hierarchyTree(l2)
+      val h = T2
+
+      val newTree = clusteredMinCrossOneLevel(graph, B1, h)
+
+      println("============================")
+      newTree.leaves.foreach(println(_))
+    })
   }
-  
+
+  def clusteredMinCrossOneLevel(graph: CompoundLayeredGraph, B1: Seq[Node], current: TreeNode): TreeNode = {
+    val B2p = current.children
+    val Ehp = graph.edges.flatMap(edge => {
+      if (B1.contains(edge.from)) {
+        B2p.find({
+          case node: TreeNode => node.withChildren.contains(edge.to)
+          case node => node.equals(edge.to)
+        }).map(node => DirectedEdge(edge.from, node))
+      } else {
+        None
+      }
+    })
+    val weightedEdges = Ehp.groupBy(identity)
+      .map({case (edge, group) => new WeightedEdge(edge.from, edge.to, group.size)}).toList
+    // BipartiteGraph(B1, B2p, weightedEdges) could be cached
+    val order = minCrossBarycenter(B1, B2p, weightedEdges)
+    current.copyWith(order.map({
+      case x: TreeNode => clusteredMinCrossOneLevel(graph, B1, x)
+      case x => x
+    }))
+  }
+
+  def minCrossBarycenter(fixedRank: Seq[Node], rank: Seq[Node], weightedEdges: Seq[WeightedEdge]): Seq[Node] = {
+    rank.map(node => node -> {
+      val tuple = weightedEdges.filter(edge => edge.to == node)
+        .map(edge => (edge.weight * fixedRank.indexOf(edge.from), edge.weight))
+        .fold((0,0))({case (a,b) => (a._1+b._1, a._2+b._2)})
+      tuple._1.toDouble / tuple._2
+    }).sortBy({ case (node, value) => value })
+    .map(_._1)
+  }
+
   def layoutActivity(inputGraph: ActivityGraph) = {
 
     val activityGraph = preprocessClusters(inputGraph)
@@ -77,7 +122,7 @@ object Launcher {
 
     // crossing reduction
 
-    // horizontal coordinate assignment (optionel mais interessant pour le debug)
+    // horizontal coordinate assignment
 
     // creating planar embedding
 
