@@ -16,40 +16,117 @@ object Launcher {
 
     // TODO: should verify that graph clusters are non empty
 
-    // TODO: implement ping pong
-    1.until(graph.hierarchyTree.keys.size).foreach(l2 => {
-      val B1 = graph.hierarchyTree(l2-1).leaves
-      val T2 = graph.hierarchyTree(l2)
-      val h = T2
+    val lines = scala.collection.mutable.ArrayBuffer[TreeNode](
+      graph.hierarchyTree.keySet.toSeq.sorted.indices.map(i => graph.hierarchyTree(i)):_*)
 
-      val newTree = clusteredMinCrossOneLevel(graph, B1, h)
-
-      println("============================")
-      newTree.leaves.foreach(println(_))
+    val graphsTopToBottom = lines.indices.map(i => {
+      if (i < lines.length-1) {
+        val B1 = lines(i).leaves
+        val T2 = lines(i + 1)
+        buildClusterGraphOneLevel(graph, B1, T2).toMap
+      } else {
+        null
+      }
     })
+
+    val graphsBottomToTop = lines.indices.map(i => {
+      if (i == 0) {
+        null
+      } else {
+        val B1 = lines(i).leaves
+        val T2 = lines(i - 1)
+        buildClusterGraphOneLevel(graph, B1, T2).toMap
+      }
+    })
+    var changed = true
+    var i = 0
+    while (changed && i < 10) {
+      changed = false
+      lines.indices.foreach(l2 => {
+        if (l2 > 0) {
+          val B1 = lines(l2 - 1).leaves
+          val T2 = lines(l2)
+
+          val newTree = clusteredMinCrossOneLevel(graphsTopToBottom(l2 - 1), B1, T2)
+          lines(l2) = newTree
+
+          if (newTree.leaves != T2.leaves) {
+            changed = true
+            println(">>>>")
+            T2.leaves.foreach(node => { print(node); print(" ") })
+            println()
+            newTree.leaves.foreach(node => { print(node); print(" ") })
+            println()
+          }
+
+        }
+      })
+
+      lines.indices.reverse.foreach(l2 => {
+        if (l2 > 0) {
+          val B1 = lines(l2).leaves
+          val T2 = lines(l2 - 1)
+
+          val newTree = clusteredMinCrossOneLevel(graphsBottomToTop(l2), B1, T2)
+          lines(l2 - 1) = newTree
+
+          if (newTree.leaves != T2.leaves) {
+            changed = true
+            println("<<<<")
+            T2.leaves.foreach(node => { print(node); print(" ") })
+            println()
+            newTree.leaves.foreach(node => { print(node); print(" ") })
+            println()
+          }
+        }
+        i += 1
+      })
+    }
+
+    // TODO: draw graph to SVG
+
   }
 
-  def clusteredMinCrossOneLevel(graph: CompoundLayeredGraph, B1: Seq[Node], current: TreeNode): TreeNode = {
+  def buildClusterGraphOneLevel(graph: CompoundLayeredGraph, B1: Seq[Node], current: TreeNode): Seq[(TreeNode, BipartiteGraph)] = {
     val B2p = current.children
     val Ehp = graph.edges.flatMap(edge => {
-      if (B1.contains(edge.from)) {
-        B2p.find({
-          case node: TreeNode => node.withChildren.contains(edge.to)
-          case node => node.equals(edge.to)
-        }).map(node => DirectedEdge(edge.from, node))
-      } else {
-        None
+      findIncidentNode(edge, B1) match {
+        case Some(from) =>
+          val to = edge.opposite(from)
+          B2p.find({
+            case node: TreeNode => node.withChildren.contains(to)
+            case node => node.equals(to)
+          }).map(node => DirectedEdge(from, node))
+        case _ => None
       }
     })
     val weightedEdges = Ehp.groupBy(identity)
       .map({case (edge, group) => new WeightedEdge(edge.from, edge.to, group.size)}).toList
-    // BipartiteGraph(B1, B2p, weightedEdges) could be cached
-    val order = minCrossBarycenter(B1, B2p, weightedEdges)
+
+    val asso = current -> BipartiteGraph(B1, B2p, weightedEdges)
+
+    asso +: B2p.flatMap({
+      case x: TreeNode => buildClusterGraphOneLevel(graph, B1, x)
+      case x => Seq()
+    })
+  }
+  
+  def findIncidentNode(edge: Edge, nodes: Seq[Node]): Option[Node] = {
+    nodes.foreach(node => if (node == edge.from || node == edge.to) return Some(node))
+    None
+  }
+
+  def clusteredMinCrossOneLevel(graphs: Map[TreeNode, BipartiteGraph], B1: Seq[Node], current: TreeNode): TreeNode = {
+    val graph = graphs(current)
+    val order = minCrossBarycenter(B1, graph.B2, graph.weightedEdges)
+
     current.copyWith(order.map({
-      case x: TreeNode => clusteredMinCrossOneLevel(graph, B1, x)
+      case x: TreeNode => clusteredMinCrossOneLevel(graphs, B1, x)
       case x => x
     }))
   }
+
+  case class BipartiteGraph(B1: Seq[Node], B2: Seq[Node], weightedEdges: Seq[WeightedEdge])
 
   def minCrossBarycenter(fixedRank: Seq[Node], rank: Seq[Node], weightedEdges: Seq[WeightedEdge]): Seq[Node] = {
     rank.map(node => node -> {

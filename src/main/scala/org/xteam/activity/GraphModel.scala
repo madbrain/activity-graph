@@ -5,6 +5,8 @@ trait Node
 trait Edge {
   val from: Node
   val to: Node
+
+  def opposite(node: Node): Node = if (node == from) to else from
 }
 
 class ClusterNode(val elements: Seq[Node]) extends Node

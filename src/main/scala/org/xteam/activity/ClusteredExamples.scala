@@ -13,6 +13,7 @@ object ClusteredExamples {
       case x: ExampleCluster => i == x.i
       case _ => false
     }
+    override def hashCode() = i
     override def toString = s"ExampleCluster($i)"
   }
 
